@@ -1,0 +1,79 @@
+spring:
+  datasource:
+    url:
+    hikari:
+      username:
+      password:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+        cluster-name: BJ
+    sentinel:
+      transport:
+        dashboard: localhost:8080
+    stream:
+      rocketmq:
+        binder:
+          name-server: 127.0.0.1:9876
+      bindings:
+        output:
+          # 用来指定topic
+          destination: stream-test-topic
+
+  # 需要指定应用名来挂载到nacos
+  application:
+    name: content-center
+server:
+  port: 8010
+
+# 该方法为使用配置文件来配置Ribbon的负载均衡规则，与src/main/java/com/alpha/contentcenter/configuration/UserCenterRibbonConfiguration.java功能类似
+user-center:
+  ribbon:
+    NFLoadBalancerRuleClassName: com.netflix.loadbalancer.RandomRule
+
+# 打开ribbon的饥饿加载，可以针对clients配置，多个clients用逗号隔开
+ribbon:
+  eager-load:
+    enabled: true
+    clients: user-center
+
+logging:
+  level:
+    com.alpha: debug
+    com.alpha.contentcenter.feignclient.UserCenterFeignClient: debug
+
+# 通过属性配置feign的日志级别
+feign:
+  sentinel:
+    # 为Feign整合Sentinel
+    enabled: true
+  client:
+    config:
+      # 细粒配置，针对不同的服务配置日志级别，如果要配置全局配置，只需要将user-center改为default即可
+      user-center:
+        loggerLevel: full
+
+  httpclient:
+    # Feign使用httpclient
+    enabled: true
+    # 最大连接数
+    max-connections: 200
+    # 单个路径的最大连接数，比如:/index
+    max-connections-per-route: 50
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    # 必须指定group
+    group: test-group
+
+jwt:
+  secret: aaabbbcccddd
+  # 有效期，单位秒，默认2周
+  expire-time-in-second: 1209600
