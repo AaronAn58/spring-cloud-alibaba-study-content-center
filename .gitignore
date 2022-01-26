@@ -36,3 +36,6 @@ build/
 .mvn
 mvnw
 mvnw.cmd
+
+### application.yml
+src/main/resources/application.yml
