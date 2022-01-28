@@ -19,7 +19,7 @@ public class GlobalExceptionErrorHandle {
         log.warn("token不合法", e);
         return new ResponseEntity<>(
                 ErrorCode.builder()
-                        .msg("token不合法")
+                        .msg(e.getMessage())
                         .code(HttpStatus.UNAUTHORIZED.value())
                         .build(), HttpStatus.UNAUTHORIZED
         );

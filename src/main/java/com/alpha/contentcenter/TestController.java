@@ -9,8 +9,10 @@ import com.alpha.contentcenter.feignclient.TestBaiduFeignClient;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.cloud.context.config.annotation.RefreshScope;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +25,8 @@ import java.util.List;
 @Slf4j
 @RestController
 @RequiredArgsConstructor(onConstructor = @__(@Autowired))
+//用于配置动态刷新
+@RefreshScope
 public class TestController {
 
     private final DiscoveryClient discoveryClient;
@@ -67,6 +71,14 @@ public class TestController {
             }
             ContextUtil.exit();
         }
+    }
+
+    @Value("${your.configuration}")
+    private String yourConfiguration;
+
+    @GetMapping("test-config")
+    public String testConfig() {
+        return this.yourConfiguration;
     }
 
 

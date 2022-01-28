@@ -1,34 +1,35 @@
 package com.alpha.contentcenter.service.content;
 
 import com.alpha.contentcenter.dao.content.ShareMapper;
+import com.alpha.contentcenter.dao.mid_user_share.MidUserShareMapper;
 import com.alpha.contentcenter.dao.rocketmq_transaction_log.RocketmqTransactionLogMapper;
 import com.alpha.contentcenter.domain.dto.content.ShareAuditDTO;
 import com.alpha.contentcenter.domain.dto.content.ShareDTO;
 import com.alpha.contentcenter.domain.dto.message.UserAddBonusMsgDTO;
+import com.alpha.contentcenter.domain.dto.user.UserAddBonusDTO;
 import com.alpha.contentcenter.domain.dto.user.UserDTO;
 import com.alpha.contentcenter.domain.entity.content.Share;
+import com.alpha.contentcenter.domain.entity.mid_user_share.MidUserShare;
 import com.alpha.contentcenter.domain.entity.rocketmq_transaction_log.RocketmqTransactionLog;
 import com.alpha.contentcenter.domain.enums.AuditStatusEnum;
 import com.alpha.contentcenter.feignclient.UserCenterFeignClient;
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.PageInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.apache.rocketmq.spring.support.RocketMQHeaders;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.cloud.client.ServiceInstance;
-import org.springframework.cloud.client.discovery.DiscoveryClient;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.server.handler.ExceptionHandlingWebHandler;
 
-import java.util.List;
+import javax.servlet.http.HttpServletRequest;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.Collectors;
+import java.util.List;
 
 @Service
 @Slf4j
@@ -45,6 +46,7 @@ public class ShareService {
 
     private final RocketmqTransactionLogMapper rocketmqTransactionLogMapper;
 
+    private final MidUserShareMapper midUserShareMapper;
 //    private final DiscoveryClient discoveryClient; DiscoveryClient由ribbon代替
 
     public ShareDTO findById(Integer id) {
@@ -122,18 +124,7 @@ public class ShareService {
             String transactionId = UUID.randomUUID().toString();
             // 发送办消息
             // sendMessageInTransaction的第四个参数，主要用于将参数传递至执行和回查的方法，详见src/main/java/com/alpha/contentcenter/rocketmq/AddBonusTransactionListener.java
-            this.rocketMQTemplate.sendMessageInTransaction(
-                    "add-bonus",
-                    MessageBuilder
-                            .withPayload(UserAddBonusMsgDTO.builder()
-                                    .userId(share.getUserId())
-                                    .bonus(50)
-                                    .build())
-                            .setHeader(RocketMQHeaders.TRANSACTION_ID, transactionId)
-                            .setHeader("share_id", id)
-                            .build(),
-                    shareAuditDTO
-            );
+            this.rocketMQTemplate.sendMessageInTransaction("add-bonus", MessageBuilder.withPayload(UserAddBonusMsgDTO.builder().userId(share.getUserId()).bonus(50).build()).setHeader(RocketMQHeaders.TRANSACTION_ID, transactionId).setHeader("share_id", id).build(), shareAuditDTO);
         } else {
             this.auditByIdInDB(id, shareAuditDTO);
         }
@@ -141,22 +132,67 @@ public class ShareService {
     }
 
     public void auditByIdInDB(Integer id, ShareAuditDTO shareAuditDTO) {
-        Share share = Share.builder()
-                .id(id)
-                .auditStatus(shareAuditDTO.getAuditStatusEnum().toString())
-                .reason(shareAuditDTO.getReason())
-                .build();
+        Share share = Share.builder().id(id).auditStatus(shareAuditDTO.getAuditStatusEnum().toString()).reason(shareAuditDTO.getReason()).build();
         this.shareMapper.updateByPrimaryKeySelective(share);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void auditByIdWithRocketMQLog(Integer id, ShareAuditDTO shareAuditDTO, String transactionId) {
         this.auditByIdInDB(id, shareAuditDTO);
-        this.rocketmqTransactionLogMapper.insertSelective(
-                RocketmqTransactionLog.builder()
-                        .transactionId(transactionId)
-                        .log("审核分享")
+        this.rocketmqTransactionLogMapper.insertSelective(RocketmqTransactionLog.builder()
+                .transactionId(transactionId)
+                .log("审核分享")
+                .build());
+    }
+
+    public PageInfo<Share> q(String title, Integer pageNo, Integer pageSize) {
+        // 表示要分页了，会自动切入不分页的SQL，自动拼接成分页的SQL
+        PageHelper.startPage(pageNo, pageSize);
+
+        List<Share> shares = this.shareMapper.selectByParam(title);
+
+        return new PageInfo<>(shares);
+    }
+
+    public Share exchangeById(Integer id, HttpServletRequest request) {
+        // 1. 根据id查询share，校验是否存在
+        Share share = this.shareMapper.selectByPrimaryKey(id);
+        if (share == null) {
+            throw new IllegalArgumentException("该分享不存在");
+        }
+        Object userId = request.getAttribute("id");
+        Integer integerUserId = Integer.valueOf((String) userId);
+
+        MidUserShare midUserShare = this.midUserShareMapper.selectOne(
+                MidUserShare.builder()
+                        .shareId(id)
+                        .userId(integerUserId)
                         .build()
         );
+        //如已兑换，直接返回
+        if (midUserShare != null) {
+            return share;
+        }
+        // 2. 根据当前登录的用户id，查询积分是否够
+        UserDTO userDTO = this.userCenterFeignClient.findById(integerUserId);
+        Integer price = share.getPrice();
+        if (price > userDTO.getBonus()) {
+            throw new IllegalArgumentException("积分不够用");
+        }
+        // 3. 扣减积分 & 往mid_user_share里插入一条数据
+        this.userCenterFeignClient.addBonus(
+                UserAddBonusDTO.builder()
+                        .userId(integerUserId)
+                        .bonus(0 - price)
+                        .build()
+        );
+
+        this.midUserShareMapper.insert(
+                MidUserShare.builder()
+                        .userId(integerUserId)
+                        .shareId(id)
+                        .build());
+
+        return share;
     }
 }
