@@ -54,6 +54,11 @@ public class ShareController {
 
     }
 
+    @GetMapping("/test-redis")
+    public String testRedis(){
+        return this.shareService.testRedis();
+    }
+
     @GetMapping("/exchange/{id}")
     @CheckLogin
     public Share exchangeById(@PathVariable Integer id, HttpServletRequest request) {

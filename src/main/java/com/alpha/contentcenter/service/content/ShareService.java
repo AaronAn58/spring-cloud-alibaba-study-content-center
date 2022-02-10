@@ -25,6 +25,10 @@ import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.ShardedJedis;
+import redis.clients.jedis.ShardedJedisPool;
 
 import javax.servlet.http.HttpServletRequest;
 import java.util.Objects;
@@ -48,6 +52,9 @@ public class ShareService {
 
     private final MidUserShareMapper midUserShareMapper;
 //    private final DiscoveryClient discoveryClient; DiscoveryClient由ribbon代替
+
+
+    private final ShardedJedisPool jedisPool;
 
     public ShareDTO findById(Integer id) {
         Share share = this.shareMapper.selectByPrimaryKey(id);
@@ -124,7 +131,14 @@ public class ShareService {
             String transactionId = UUID.randomUUID().toString();
             // 发送办消息
             // sendMessageInTransaction的第四个参数，主要用于将参数传递至执行和回查的方法，详见src/main/java/com/alpha/contentcenter/rocketmq/AddBonusTransactionListener.java
-            this.rocketMQTemplate.sendMessageInTransaction("add-bonus", MessageBuilder.withPayload(UserAddBonusMsgDTO.builder().userId(share.getUserId()).bonus(50).build()).setHeader(RocketMQHeaders.TRANSACTION_ID, transactionId).setHeader("share_id", id).build(), shareAuditDTO);
+            this.rocketMQTemplate.sendMessageInTransaction("add-bonus", MessageBuilder.withPayload(
+                            UserAddBonusMsgDTO
+                                    .builder()
+                                    .userId(share.getUserId())
+                                    .bonus(50)
+                                    .build())
+                    .setHeader(RocketMQHeaders.TRANSACTION_ID, transactionId)
+                    .setHeader("share_id", id).build(), shareAuditDTO);
         } else {
             this.auditByIdInDB(id, shareAuditDTO);
         }
@@ -194,5 +208,20 @@ public class ShareService {
                         .build());
 
         return share;
+    }
+
+    public String testRedis() {
+
+        // 1.先读取缓存，如果命中，则直接返回，只将需要的数据存入缓存即可
+
+        // 2.若没有命中，则读取数据库，并及时更新缓存
+
+        // 3.若数据库有更新，及时更新缓存
+
+        ShardedJedis resources = this.jedisPool.getResource();
+        resources.set("ccccc", "ddddd");
+        String s = resources.get("123");
+        System.out.println(s);
+        return "ok";
     }
 }
