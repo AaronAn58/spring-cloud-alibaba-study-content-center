@@ -13,6 +13,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.web.client.RestTemplate;
 import tk.mybatis.spring.annotation.MapperScan;
 
+import java.util.Collections;
+
 @MapperScan("com.alpha.contentcenter.dao")
 @SpringBootApplication
 //@EnableFeignClients
@@ -28,7 +30,13 @@ public class ContentCenterApplication {
     @LoadBalanced
     @SentinelRestTemplate(blockHandler = "", fallback = "") //此注解用于为RestTemplate整合Sentinel
     public RestTemplate restTemplate() {
-        return new RestTemplate();
+        RestTemplate restTemplate = new RestTemplate();
+        restTemplate.setInterceptors(
+                Collections.singletonList(
+                        new TestRestTemplateTOkenRelayInterceptor()
+                )
+        );
+        return restTemplate;
     }
 
 }

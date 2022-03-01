@@ -1,9 +1,9 @@
 spring:
   datasource:
-    url:
+    url: jdbc:mysql://${ip}:3306/content_center
     hikari:
-      username:
-      password:
+      username: ${username}
+      password: ${password}
       driver-class-name: com.mysql.cj.jdbc.Driver
   cloud:
     nacos:
@@ -25,6 +25,15 @@ spring:
   # 需要指定应用名来挂载到nacos
   application:
     name: content-center
+  zipkin:
+    base-url: http://localhost:9411/
+    # 解决nacos报错的问题，原因是nacos将http://localhost:9411/
+    # 认为是一个微服务，但是当通过定时任务进行服务发现时，发现不存在，所以报错
+    # 解决方案是通过增加该配置，让服务发现组件不认为是一个微服务
+    discovery-client-enabled: false
+  sleuth:
+    sampler:
+      probability: 1.0 # 采用率，1.0表示100%
 server:
   port: 8010
 
@@ -43,6 +52,7 @@ logging:
   level:
     com.alpha: debug
     com.alpha.contentcenter.feignclient.UserCenterFeignClient: debug
+    org.springframework.cloud.sleuth: debug
 
 # 通过属性配置feign的日志级别
 feign:
@@ -51,9 +61,13 @@ feign:
     enabled: true
   client:
     config:
-      # 细粒配置，针对不同的服务配置日志级别，如果要配置全局配置，只需要将user-center改为default即可
-      user-center:
+      default:
         loggerLevel: full
+        requestInterceptors:
+          - com.alpha.contentcenter.feignclient.inteceptor.TokenRelayRequestInterceptor
+      # 细粒配置，针对不同的服务配置日志级别，如果要配置全局配置，只需要将user-center改为default即可
+  #      user-center:
+  #        loggerLevel: full
 
   httpclient:
     # Feign使用httpclient
