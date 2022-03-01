@@ -42,3 +42,9 @@ src/main/resources/application.yml
 
 ### log
 derby.log
+
+### config.properties
+src/main/resources/generator/config.properties
+
+### redis.properties
+src/main/resources/redis/redis.properties
